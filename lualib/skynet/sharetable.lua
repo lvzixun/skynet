@@ -115,6 +115,33 @@ local function sharetable_service()
 		-- no return
 	end
 
+    function sharetable.unref(source, unref_ptr)
+        local list = clients[source]
+        if list then
+            local idx = nil
+            for i,ptr in ipairs(list) do
+                if unref_ptr == ptr then
+                    assert(idx == nil)
+                    idx = i
+                end
+            end
+            local ref = matrix[unref_ptr]
+            if idx and ref and ref.refs[source] then
+                table.remove(list, idx)
+                ref.refs[source] = nil
+                ref.count = ref.count - 1
+                if ref.count == 0 then
+                    local filename = ref.filename
+                    if files[filename] == ref.matrix then
+                        files[filename] = nil
+                    end
+                    ref.matrix:close()
+                    matrix[unref_ptr] = nil
+                end
+            end
+        end
+    end
+
 	skynet.dispatch("lua", function(_,source,cmd,...)
 		sharetable[cmd](source,...)
 	end)
@@ -203,7 +230,7 @@ function sharetable.query(filename)
 			map = {}
 			RECORD[filename] = map
 		end
-		map[t] = true
+		map[t] = newptr
 		return t
 	end
 end
@@ -225,15 +252,18 @@ local getinfo = debug.getinfo
 local NILOBJ = {}
 local function insert_replace(old_t, new_t, replace_map)
     for k, ov in pairs(old_t) do
-        if type(ov) == "table" then
-            local nv = new_t[k]
-            if nv == nil then
-                nv = NILOBJ
-            end
+        local type_ov = type(ov)
+        local nv = new_t[k]
+        if nv == nil then
+            nv = NILOBJ
+        end
+        if type_ov == "table" then
             assert(replace_map[ov] == nil)
             replace_map[ov] = nv
             nv = type(nv) == "table" and nv or NILOBJ
             insert_replace(ov, nv, replace_map)
+        elseif type_ov == "string" or type_ov == "function" then
+            replace_map[ov] = nv
         end
     end
     replace_map[old_t] = new_t
@@ -433,23 +463,32 @@ end
 
 
 function sharetable.update(...)
-	local names = {...}
-	local replace_map = {}
-	for _, name in ipairs(names) do
-		local map = RECORD[name]
-		if map then
-			local new_t = sharetable.query(name)
-			for old_t,_ in pairs(map) do
-				if old_t ~= new_t then
-					insert_replace(old_t, new_t, replace_map)
+    local names = {...}
+    local replace_map = {}
+    local unref_ptrs = {}
+    for _, name in ipairs(names) do
+        local map = RECORD[name]
+        if map then
+            local new_t = sharetable.query(name)
+            local new_ptr = assert(map[new_t])
+            for old_t, ptr in pairs(map) do
+                if old_t ~= new_t then
+                    insert_replace(old_t, new_t, replace_map)
                     map[old_t] = nil
-				end
-			end
-		end
-	end
+                end
+                if ptr ~= new_ptr then
+                    unref_ptrs[ptr] = true
+                end
+            end
+        end
+    end
 
     if next(replace_map) then
-	   resolve_replace(replace_map)
+       resolve_replace(replace_map)
+    end
+
+    for unref_ptr in pairs(unref_ptrs) do
+        skynet.send(sharetable.address, "lua", "unref", unref_ptr)
     end
 end
 
