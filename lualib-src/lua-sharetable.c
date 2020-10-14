@@ -239,6 +239,13 @@ matrix_from_file(lua_State *L) {
 	return box_state(L, mL);
 }
 
+static int
+lto_strpointer(lua_State* L) {
+	const char* p = lua_tostring(L, -1);
+	lua_pushlightuserdata(L, (void*)p);
+	return 1;
+}
+
 LUAMOD_API int
 luaopen_skynet_sharetable_core(lua_State *L) {
 	luaL_checkversion(L);
@@ -247,6 +254,7 @@ luaopen_skynet_sharetable_core(lua_State *L) {
 		{ "stackvalues", lco_stackvalues }, 
 		{ "matrix", matrix_from_file },
 		{ "is_sharedtable", lis_sharedtable },
+		{ "to_strpointer", lto_strpointer },
 		{ NULL, NULL },
 	};
 	luaL_newlib(L, l);

@@ -3,6 +3,7 @@ local service = require "skynet.service"
 local core = require "skynet.sharetable.core"
 local is_sharedtable = core.is_sharedtable
 local stackvalues = core.stackvalues
+local to_strpointer = core.to_strpointer
 
 local function sharetable_service()
 	local skynet = require "skynet"
@@ -262,12 +263,25 @@ local function insert_replace(old_t, new_t, replace_map)
             replace_map[ov] = nv
             nv = type(nv) == "table" and nv or NILOBJ
             insert_replace(ov, nv, replace_map)
-        elseif type_ov == "string" or type_ov == "function" then
+        elseif type_ov == "string" then
+            replace_map[to_strpointer(ov)] = nv
+        elseif type_ov == "function" then
             replace_map[ov] = nv
         end
     end
     replace_map[old_t] = new_t
     return replace_map
+end
+
+local function set_replacemt(replace_map)
+    setmetatable(replace_map, {
+        __index = function (t, k)
+            if type(k) == "string" then
+                local v = rawget(t, to_strpointer(k))
+                return v
+            end
+        end
+    })
 end
 
 
@@ -482,11 +496,15 @@ function sharetable.update(...)
             end
         end
     end
-
+    
+    set_replacemt(replace_map)
     if next(replace_map) then
        resolve_replace(replace_map)
     end
 
+    replace_map = {}
+    collectgarbage "collect"
+    collectgarbage "collect"
     for unref_ptr in pairs(unref_ptrs) do
         skynet.send(sharetable.address, "lua", "unref", unref_ptr)
     end
