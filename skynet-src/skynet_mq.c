@@ -32,7 +32,7 @@ struct message_queue {
 
 	// Preserved fields
 	uint32_t handle;
-	int release;
+	ATOM_INT release;
 	ATOM_INT in_global;
 	int overload;
 	int overload_threshold;
@@ -60,6 +60,13 @@ skynet_globalmq_push(struct message_queue *queue) {
 		q->head = q->tail = queue;
 	}
 	SPIN_UNLOCK(q)
+}
+
+static inline void
+_try_push_global(struct message_queue *q) {
+	if (ATOM_XCHG(&q->in_global, MQ_IN_GLOBAL) == 0) {
+		skynet_globalmq_push(q);
+	}
 }
 
 struct message_queue *
@@ -93,7 +100,7 @@ skynet_mq_create(uint32_t handle) {
 
 	q->handle = handle;
 	ATOM_INIT(&q->in_global, MQ_IN_GLOBAL);
-	q->release = 0;
+	ATOM_INIT(&q->release, 0);
 	q->overload = 0;
 	q->overload_threshold = MQ_OVERLOAD;
 	q->next = NULL;
@@ -145,9 +152,7 @@ skynet_mq_pop(struct message_queue *q, struct skynet_message *message) {
 			q->overload_threshold = MQ_OVERLOAD;
 			ATOM_STORE(&q->in_global, 0);
 			if (head != (struct mq_node *)ATOM_LOAD(&q->tail)) {
-				if (ATOM_XCHG(&q->in_global, MQ_IN_GLOBAL) == 0) {
-					skynet_globalmq_push(q);
-				}
+				_try_push_global(q);
 			}
 			return 1;
 		}
@@ -191,9 +196,7 @@ skynet_mq_push(struct message_queue *q, struct skynet_message *message) {
 
 	ATOM_STORE(&prev->next, (uintptr_t)node);
 
-	if (ATOM_XCHG(&q->in_global, MQ_IN_GLOBAL) == 0) {
-		skynet_globalmq_push(q);
-	}
+	_try_push_global(q);
 }
 
 void
@@ -206,9 +209,9 @@ skynet_mq_init() {
 
 void
 skynet_mq_mark_release(struct message_queue *q) {
-	assert(q->release == 0);
-	q->release = 1;
-	if (ATOM_LOAD(&q->in_global) != MQ_IN_GLOBAL) {
+	assert(ATOM_LOAD(&q->release) == 0);
+	ATOM_STORE(&q->release, 1);
+	if (ATOM_CAS(&q->in_global, 0, MQ_IN_GLOBAL)) {
 		skynet_globalmq_push(q);
 	}
 }
@@ -224,7 +227,7 @@ _drop_queue(struct message_queue *q, message_drop drop_func, void *ud) {
 
 void
 skynet_mq_release(struct message_queue *q, message_drop drop_func, void *ud) {
-	if (q->release) {
+	if (ATOM_LOAD(&q->release)) {
 		_drop_queue(q, drop_func, ud);
 	} else {
 		skynet_globalmq_push(q);
