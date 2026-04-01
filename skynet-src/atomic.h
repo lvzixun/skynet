@@ -11,12 +11,14 @@
 #define ATOM_SIZET volatile size_t
 #define ATOM_ULONG volatile unsigned long
 #define ATOM_INIT(ptr, v) (*(ptr) = v)
-#define ATOM_LOAD(ptr) (*(ptr))
-#define ATOM_STORE(ptr, v) (*(ptr) = v)
+#define ATOM_LOAD(ptr) __atomic_load_n(ptr, __ATOMIC_ACQUIRE)
+#define ATOM_STORE(ptr, v) __atomic_store_n(ptr, v, __ATOMIC_RELEASE)
 #define ATOM_CAS(ptr, oval, nval) __sync_bool_compare_and_swap(ptr, oval, nval)
 #define ATOM_CAS_ULONG(ptr, oval, nval) __sync_bool_compare_and_swap(ptr, oval, nval)
 #define ATOM_CAS_SIZET(ptr, oval, nval) __sync_bool_compare_and_swap(ptr, oval, nval)
 #define ATOM_CAS_POINTER(ptr, oval, nval) __sync_bool_compare_and_swap(ptr, oval, nval)
+#define ATOM_XCHG(ptr, nval) __sync_lock_test_and_set(ptr, nval)
+#define ATOM_XCHG_POINTER(ptr, nval) __sync_lock_test_and_set(ptr, nval)
 #define ATOM_FINC(ptr) __sync_fetch_and_add(ptr, 1)
 #define ATOM_FDEC(ptr) __sync_fetch_and_sub(ptr, 1)
 #define ATOM_FADD(ptr,n) __sync_fetch_and_add(ptr, n)
@@ -61,6 +63,16 @@ ATOM_CAS_ULONG(STD_ atomic_ulong *ptr, unsigned long oval, unsigned long nval) {
 static inline int
 ATOM_CAS_POINTER(STD_ atomic_uintptr_t *ptr, uintptr_t oval, uintptr_t nval) {
 	return STD_ atomic_compare_exchange_weak(ptr, &(oval), nval);
+}
+
+static inline int
+ATOM_XCHG(STD_ atomic_int *ptr, int nval) {
+	return STD_ atomic_exchange(ptr, nval);
+}
+
+static inline uintptr_t
+ATOM_XCHG_POINTER(STD_ atomic_uintptr_t *ptr, uintptr_t nval) {
+	return STD_ atomic_exchange(ptr, nval);
 }
 
 #define ATOM_FINC(ptr) STD_ atomic_fetch_add(ptr, atomic_value_type_(ptr,1))

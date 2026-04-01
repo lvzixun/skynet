@@ -14,6 +14,7 @@
 #define ATOMIC_FLAG_INIT_ 0
 #define atomic_flag_test_and_set_(ptr) __sync_lock_test_and_set(ptr, 1)
 #define atomic_flag_clear_(ptr) __sync_lock_release(ptr)
+#define atomic_pause_() ((void)0)
 
 struct spinlock {
 	atomic_flag_ lock;
