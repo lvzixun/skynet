@@ -10,6 +10,9 @@
 #include <assert.h>
 #include <stdbool.h>
 
+// 0 means mq is not in global mq.
+// 1 means mq is in global mq , or the message is dispatching.
+
 #define MQ_IN_GLOBAL 1
 #define MQ_OVERLOAD 1024
 
@@ -98,6 +101,9 @@ skynet_mq_create(uint32_t handle) {
 
 	ATOM_INIT(&q->length, 0);
 
+	// When the queue is create (always between service create and service init) ,
+	// set in_global flag to avoid push it to global queue .
+	// If the service init success, skynet_context_new will call skynet_mq_push to push it to global queue.
 	q->handle = handle;
 	ATOM_INIT(&q->in_global, MQ_IN_GLOBAL);
 	ATOM_INIT(&q->release, 0);
